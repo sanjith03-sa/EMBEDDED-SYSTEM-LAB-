@@ -1,0 +1,148 @@
+// Experiment: Real-Time Embedded System Optimization
+// Board: Teensy 4.1
+// Input: Potentiometer connected to A0
+
+#include <Arduino.h>
+
+const uint8_t SENSOR_PIN = A0;
+
+const uint32_t SAMPLE_INTERVAL_US = 1000;
+const uint16_t BUFFER_SIZE = 128;
+
+uint16_t sampleBuffer[BUFFER_SIZE];
+
+uint16_t bufferIndex = 0;
+uint32_t nextSampleTime = 0;
+
+uint32_t totalSamples = 0;
+uint32_t totalBlocks = 0;
+uint32_t missedDeadlines = 0;
+
+uint32_t maxSampleExecutionUs = 0;
+uint32_t minSampleExecutionUs = 0xFFFFFFFF;
+
+uint32_t maxBlockExecutionUs = 0;
+uint64_t totalBlockExecutionUs = 0;
+
+uint32_t lastReportTime = 0;
+
+uint16_t minimumValue = 65535;
+uint16_t maximumValue = 0;
+uint64_t sumValues = 0;
+
+void processBuffer() {
+  uint32_t processStart = micros();
+
+  uint16_t minValue = 65535;
+  uint16_t maxValue = 0;
+  uint64_t sum = 0;
+
+  for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
+    uint16_t value = sampleBuffer[i];
+
+    if (value < minValue) minValue = value;
+    if (value > maxValue) maxValue = value;
+
+    sum += value;
+  }
+
+  uint32_t processTime = micros() - processStart;
+
+  if (processTime > maxBlockExecutionUs) {
+    maxBlockExecutionUs = processTime;
+  }
+
+  totalBlockExecutionUs += processTime;
+  totalBlocks++;
+
+  minimumValue = minValue;
+  maximumValue = maxValue;
+  sumValues = sum;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  analogReadResolution(12);
+
+  delay(1000);
+
+  Serial.println("Teensy 4.1 Real-Time Optimization");
+  Serial.println("Sampling interval: 1000 us");
+  Serial.println("Buffer size: 128 samples");
+
+  nextSampleTime = micros() + SAMPLE_INTERVAL_US;
+}
+
+void loop() {
+  uint32_t now = micros();
+
+  if ((int32_t)(now - nextSampleTime) >= 0) {
+    uint32_t sampleStart = micros();
+
+    uint16_t value = analogRead(SENSOR_PIN);
+
+    sampleBuffer[bufferIndex] = value;
+    bufferIndex++;
+
+    uint32_t sampleExecutionUs = micros() - sampleStart;
+
+    if (sampleExecutionUs > maxSampleExecutionUs) {
+      maxSampleExecutionUs = sampleExecutionUs;
+    }
+
+    if (sampleExecutionUs < minSampleExecutionUs) {
+      minSampleExecutionUs = sampleExecutionUs;
+    }
+
+    totalSamples++;
+
+    nextSampleTime += SAMPLE_INTERVAL_US;
+
+    if ((int32_t)(micros() - nextSampleTime) >= 0) {
+      missedDeadlines++;
+      nextSampleTime = micros() + SAMPLE_INTERVAL_US;
+    }
+
+    if (bufferIndex >= BUFFER_SIZE) {
+      processBuffer();
+      bufferIndex = 0;
+    }
+  }
+
+  if (millis() - lastReportTime >= 1000) {
+    lastReportTime = millis();
+
+    Serial.print("Samples: ");
+    Serial.print(totalSamples);
+
+    Serial.print(" | Blocks: ");
+    Serial.print(totalBlocks);
+Serial.print(" | Max sample time (us): ");
+    Serial.print(maxSampleExecutionUs);
+
+    Serial.print(" | Min sample time (us): ");
+    Serial.print(minSampleExecutionUs);
+
+    Serial.print(" | Max block time (us): ");
+    Serial.print(maxBlockExecutionUs);
+
+    Serial.print(" | Missed deadlines: ");
+    Serial.println(missedDeadlines);
+
+    if (totalBlocks > 0) {
+      Serial.print("Last block average: ");
+      Serial.println((double)sumValues / BUFFER_SIZE, 2);
+
+      Serial.print("Last block min/max: ");
+      Serial.print(minimumValue);
+      Serial.print(" / ");
+      Serial.println(maximumValue);
+
+      Serial.print("Average block processing time (us): ");
+      Serial.println(
+        (double)totalBlockExecutionUs / totalBlocks, 2
+      );
+    }
+  }
+}

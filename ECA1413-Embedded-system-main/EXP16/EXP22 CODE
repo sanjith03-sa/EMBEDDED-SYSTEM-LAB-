@@ -1,0 +1,111 @@
+#include <Wire.h>
+
+#define MPU6050_ADDR 0x68
+
+const uint32_t SAMPLE_INTERVAL_US = 10000;
+uint32_t nextSampleTime;
+
+int16_t axRaw, ayRaw, azRaw;
+int16_t gxRaw, gyRaw, gzRaw;
+
+int16_t readWord(uint8_t reg) {
+  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(MPU6050_ADDR, (uint8_t)2, (uint8_t)true);
+
+  if (Wire.available() < 2) {
+    return 0;
+  }
+
+  uint8_t highByte = Wire.read();
+  uint8_t lowByte = Wire.read();
+
+  return (int16_t)((highByte << 8) | lowByte);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  Wire.setClock(400000);
+
+  delay(500);
+
+  // Wake up the MPU6050.
+  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  // Accelerometer range: +/- 2 g.
+  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.write(0x1C);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  // Gyroscope range: +/- 250 degrees/second.
+  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.write(0x1B);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  Serial.println("MPU6050 Real-Time Motion Monitoring");
+  Serial.println("Sampling interval: 10 ms");
+
+  nextSampleTime = micros() + SAMPLE_INTERVAL_US;
+}
+
+void loop() {
+  if ((int32_t)(micros() - nextSampleTime) >= 0) {
+    uint32_t startTime = micros();
+
+    axRaw = readWord(0x3B);
+    ayRaw = readWord(0x3D);
+    azRaw = readWord(0x3F);
+
+    gxRaw = readWord(0x43);
+    gyRaw = readWord(0x45);
+    gzRaw = readWord(0x47);
+
+    float ax = axRaw / 16384.0f;
+    float ay = ayRaw / 16384.0f;
+    float az = azRaw / 16384.0f;
+
+    float gx = gxRaw / 131.0f;
+    float gy = gyRaw / 131.0f;
+    float gz = gzRaw / 131.0f;
+
+    float magnitude =
+        sqrtf(ax * ax + ay * ay + az * az);
+
+    uint32_t executionTime = micros() - startTime;
+
+    Serial.print("Acc(g): ");
+    Serial.print(ax, 3);
+    Serial.print(", ");
+    Serial.print(ay, 3);
+    Serial.print(", ");
+    Serial.print(az, 3);
+
+    Serial.print(" | Mag(g): ");
+    Serial.print(magnitude, 3);
+
+    Serial.print(" | Gyro(deg/s): ");
+    Serial.print(gx, 2);
+    Serial.print(", ");
+    Serial.print(gy, 2);
+    Serial.print(", ");
+    Serial.print(gz, 2);
+
+    Serial.print(" | Execution(us): ");
+    Serial.println(executionTime);
+
+    nextSampleTime += SAMPLE_INTERVAL_US;
+
+    // Resynchronize if the program falls behind.
+    if ((int32_t)(micros() - nextSampleTime) >= 0) {
+      nextSampleTime = micros() + SAMPLE_INTERVAL_US;
+    }
+  }
+}

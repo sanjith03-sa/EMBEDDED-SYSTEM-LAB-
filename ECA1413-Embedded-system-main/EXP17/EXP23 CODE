@@ -1,0 +1,79 @@
+Library required: RTClib by Adafruit.
+#include <Wire.h>
+#include <RTClib.h>
+
+RTC_DS3231 rtc;
+
+const uint32_t DISPLAY_INTERVAL_MS = 1000;
+uint32_t lastDisplayTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  delay(500);
+
+  Serial.println("DS3231 Real-Time Clock Experiment");
+
+  if (!rtc.begin()) {
+    Serial.println("DS3231 not detected. Check I2C wiring.");
+    while (1) {
+      delay(1000);
+    }
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power; setting compile time.");
+
+    // Set RTC using the computer's compile-time date and time.
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+
+  // If a manual time setting is required, set it once:
+  // rtc.adjust(DateTime(2026, 10, 22, 10, 30, 0));
+  // Comment out the adjustment after setting the correct time.
+
+  Serial.println("RTC initialized.");
+}
+
+void loop() {
+  uint32_t nowMs = millis();
+
+  if (nowMs - lastDisplayTime >= DISPLAY_INTERVAL_MS) {
+    lastDisplayTime = nowMs;
+
+    uint32_t startTime = micros();
+
+    DateTime now = rtc.now();
+    uint32_t unixTime = now.unixtime();
+
+    uint32_t executionTime = micros() - startTime;
+
+    Serial.print("Date: ");
+    Serial.print(now.year());
+    Serial.print("-");
+    if (now.month() < 10) Serial.print("0");
+    Serial.print(now.month());
+    Serial.print("-");
+    if (now.day() < 10) Serial.print("0");
+    Serial.println(now.day());
+
+    Serial.print("Time: ");
+    if (now.hour() < 10) Serial.print("0");
+    Serial.print(now.hour());
+    Serial.print(":");
+    if (now.minute() < 10) Serial.print("0");
+    Serial.print(now.minute());
+    Serial.print(":");
+    if (now.second() < 10) Serial.print("0");
+    Serial.println(now.second());
+
+    Serial.print("Unix timestamp: ");
+    Serial.println(unixTime);
+
+    Serial.print("RTC read execution time (us): ");
+    Serial.println(executionTime);
+
+    Serial.println("-----------------------------");
+  }
+}
